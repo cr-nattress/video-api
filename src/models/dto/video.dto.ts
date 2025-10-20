@@ -7,8 +7,8 @@
  */
 export interface CreateVideoRequest {
   prompt: string;
-  duration?: number;
-  resolution?: '480p' | '720p' | '1080p' | '4k';
+  duration?: number; // Sora v1: 1-20 seconds
+  resolution?: '480p' | '720p' | '1080p'; // Sora v1: max 1080p (4k not supported)
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3';
   style?: string;
   priority?: 'low' | 'normal' | 'high';

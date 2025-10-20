@@ -141,21 +141,27 @@ export class VideoService implements IVideoService {
       // Map Sora status to our job status
       let updatedJob = job;
 
-      if (soraResponse.status === 'completed' && soraResponse.result) {
+      // Map v1 API status to internal status
+      if (soraResponse.status === 'completed' && soraResponse.generations.length > 0) {
+        // Extract first generation (primary video)
+        const generation = soraResponse.generations[0];
         const videoResult: VideoResult = {
-          videoUrl: soraResponse.result.url,
-          thumbnailUrl: soraResponse.result.thumbnailUrl,
-          duration: soraResponse.result.duration,
-          resolution: soraResponse.result.resolution,
-          fileSize: soraResponse.result.fileSize,
-          format: soraResponse.result.format,
+          videoUrl: generation.video_url,
+          thumbnailUrl: undefined, // v1 doesn't provide thumbnails
+          duration: soraResponse.n_seconds,
+          resolution: `${soraResponse.width}x${soraResponse.height}`,
+          fileSize: undefined, // v1 doesn't provide file size in status
+          format: 'mp4', // v1 always returns MP4
         };
         updatedJob = updateJobResult(job, videoResult);
       } else if (soraResponse.status === 'failed') {
-        const errorMessage = soraResponse.error?.message || 'Video generation failed';
+        const errorMessage = soraResponse.failure_reason || 'Video generation failed';
         updatedJob = updateJobStatus(job, JobStatus.FAILED, errorMessage);
-      } else if (soraResponse.status === 'processing') {
+      } else if (soraResponse.status === 'in_progress') {
+        // v1 uses "in_progress" not "processing"
         updatedJob = updateJobStatus(job, JobStatus.PROCESSING);
+      } else if (soraResponse.status === 'queued') {
+        updatedJob = updateJobStatus(job, JobStatus.PENDING);
       } else if (soraResponse.status === 'cancelled') {
         updatedJob = updateJobStatus(job, JobStatus.CANCELLED);
       }
@@ -211,6 +217,7 @@ export class VideoService implements IVideoService {
 
       // Submit to Sora API
       const soraRequest = {
+        model: 'sora-1-turbo' as const,
         prompt: request.prompt,
         duration: request.duration,
         resolution: request.resolution,
@@ -247,9 +254,10 @@ export class VideoService implements IVideoService {
   }
 
   /**
-   * Validate video request
+   * Validate video request against Sora v1 constraints
    */
   private validateVideoRequest(request: CreateVideoRequest): void {
+    // Validate prompt
     if (!request.prompt || request.prompt.trim().length === 0) {
       throw new ValidationError('Prompt is required');
     }
@@ -258,8 +266,36 @@ export class VideoService implements IVideoService {
       throw new ValidationError('Prompt must be less than 1000 characters');
     }
 
-    if (request.duration && (request.duration < 5 || request.duration > 60)) {
-      throw new ValidationError('Duration must be between 5 and 60 seconds');
+    // Validate duration (Sora v1: 1-20 seconds)
+    if (request.duration !== undefined) {
+      if (request.duration < 1 || request.duration > 20) {
+        throw new ValidationError(
+          'Duration must be between 1 and 20 seconds per Sora v1 specification'
+        );
+      }
+      if (!Number.isInteger(request.duration)) {
+        throw new ValidationError('Duration must be an integer');
+      }
+    }
+
+    // Validate resolution (Sora v1: max 1080p, no 4K support)
+    if (request.resolution) {
+      const validResolutions = ['480p', '720p', '1080p'];
+      if (!validResolutions.includes(request.resolution)) {
+        throw new ValidationError(
+          `Resolution must be one of: ${validResolutions.join(', ')}. 4K is not supported in Sora v1`
+        );
+      }
+    }
+
+    // Validate aspect ratio
+    if (request.aspectRatio) {
+      const validAspectRatios = ['16:9', '9:16', '1:1', '4:3'];
+      if (!validAspectRatios.includes(request.aspectRatio)) {
+        throw new ValidationError(
+          `Aspect ratio must be one of: ${validAspectRatios.join(', ')}`
+        );
+      }
     }
   }
 

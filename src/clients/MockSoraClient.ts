@@ -30,12 +30,12 @@ export class MockSoraClient implements ISoraClient {
    * Create a new video generation job
    */
   async createVideo(request: SoraVideoRequest): Promise<SoraCreateResponse> {
-    const jobId = `sora_${randomUUID()}`;
+    const jobId = `task_${randomUUID().replace(/-/g, '').substring(0, 16).toUpperCase()}`;
 
     const mockJob: MockJob = {
       id: jobId,
       request,
-      status: 'pending',
+      status: 'queued',
       createdAt: new Date(),
     };
 
@@ -46,10 +46,26 @@ export class MockSoraClient implements ISoraClient {
     // Simulate async processing
     this.simulateProcessing(jobId);
 
+    // Return v1 API format
+    const width = request.width || 1080;
+    const height = request.height || 1080;
+    const n_seconds = request.n_seconds || request.duration || 10;
+
     return {
+      object: 'video.generation.job',
       id: jobId,
-      status: 'pending',
-      message: 'Video generation job created successfully (mock)',
+      status: 'queued',
+      created_at: Math.floor(mockJob.createdAt.getTime() / 1000),
+      finished_at: null,
+      expires_at: null,
+      generations: [],
+      prompt: request.prompt,
+      model: 'sora-1-turbo',
+      n_variants: request.n_variants || 1,
+      n_seconds,
+      height,
+      width,
+      failure_reason: null,
     };
   }
 
@@ -63,32 +79,40 @@ export class MockSoraClient implements ISoraClient {
       throw new NotFoundError('Video job', jobId);
     }
 
+    const width = job.request.width || 1080;
+    const height = job.request.height || 1080;
+    const n_seconds = job.request.n_seconds || job.request.duration || 10;
+
     const response: SoraJobResponse = {
+      object: 'video.generation.job',
       id: job.id,
       status: job.status,
+      created_at: Math.floor(job.createdAt.getTime() / 1000),
+      finished_at: job.status === 'completed' || job.status === 'failed' ? Math.floor(Date.now() / 1000) : null,
+      expires_at: job.status === 'completed' ? Math.floor(Date.now() / 1000) + 86400 : null, // 24 hours
+      generations: [],
       prompt: job.request.prompt,
-      createdAt: job.createdAt.toISOString(),
-      updatedAt: new Date().toISOString(),
+      model: 'sora-1-turbo',
+      n_variants: job.request.n_variants || 1,
+      n_seconds,
+      height,
+      width,
+      failure_reason: null,
     };
 
+    // Add generation if completed
     if (job.status === 'completed') {
-      response.result = {
-        url: `https://mock-storage.example.com/videos/${jobId}.mp4`,
-        thumbnailUrl: `https://mock-storage.example.com/thumbnails/${jobId}.jpg`,
-        duration: job.request.duration || 10,
-        resolution: job.request.resolution || '1080p',
-        fileSize: 15728640, // 15 MB
-        format: 'mp4',
-      };
-      response.completedAt = new Date().toISOString();
+      response.generations = [
+        {
+          id: `gen_${randomUUID().substring(0, 8)}`,
+          video_url: `https://mock-storage.example.com/videos/${jobId}.mp4`,
+        },
+      ];
     }
 
+    // Add failure reason if failed
     if (job.status === 'failed') {
-      response.error = {
-        code: 'PROCESSING_ERROR',
-        message: 'Mock processing error for testing',
-      };
-      response.completedAt = new Date().toISOString();
+      response.failure_reason = 'Mock processing error for testing';
     }
 
     logger.debug({ jobId, status: job.status }, 'Mock video status fetched');
@@ -121,17 +145,19 @@ export class MockSoraClient implements ISoraClient {
    * Simulate async video processing
    */
   private simulateProcessing(jobId: string): void {
+    // Transition from queued to in_progress after 1 second
     setTimeout(() => {
       const job = this.jobs.get(jobId);
-      if (job && job.status === 'pending') {
-        job.status = 'processing';
-        logger.debug({ jobId }, 'Mock job status changed to processing');
+      if (job && job.status === 'queued') {
+        job.status = 'in_progress';
+        logger.debug({ jobId }, 'Mock job status changed to in_progress');
       }
     }, 1000);
 
+    // Complete after delay
     setTimeout(() => {
       const job = this.jobs.get(jobId);
-      if (job && job.status === 'processing') {
+      if (job && job.status === 'in_progress') {
         // 90% success rate for mock
         job.status = Math.random() > 0.1 ? 'completed' : 'failed';
         logger.debug({ jobId, status: job.status }, 'Mock job completed');
