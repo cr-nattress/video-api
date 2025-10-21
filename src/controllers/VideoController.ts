@@ -6,6 +6,8 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { IVideoService } from '../services/index.js';
 import { IBatchService } from '../services/index.js';
 import { CreateVideoRequest, BatchVideoRequest } from '../models/index.js';
+import { logVideoRequest } from '../utils/fileLogger.js';
+import { logger } from '../utils/logger.js';
 
 export class VideoController {
   constructor(
@@ -20,17 +22,80 @@ export class VideoController {
     request: FastifyRequest<{ Body: CreateVideoRequest }>,
     reply: FastifyReply,
   ) {
-    const job = await this.videoService.createVideo(request.body);
+    let job;
+    let logPath;
 
-    return reply.status(201).send({
-      success: true,
-      data: {
-        jobId: job.id,
-        status: job.status,
-        message: 'Video generation job created successfully',
-      },
-      requestId: request.id,
-    });
+    try {
+      // Create video job
+      job = await this.videoService.createVideo(request.body);
+
+      // Prepare response
+      const response = {
+        success: true,
+        data: {
+          jobId: job.id,
+          status: job.status,
+          message: 'Video generation job created successfully',
+        },
+        requestId: request.id,
+      };
+
+      // Log detailed request/response to file
+      try {
+        logPath = await logVideoRequest({
+          requestId: request.id as string,
+          prompt: request.body.prompt,
+          jobId: job.id,
+          request: {
+            body: request.body,
+            headers: {
+              'user-agent': request.headers['user-agent'],
+              'content-type': request.headers['content-type'],
+            },
+            ip: request.ip,
+            method: request.method,
+            url: request.url,
+          },
+          response,
+        });
+
+        logger.info({ logPath, jobId: job.id }, 'Video request logged to file');
+      } catch (logError) {
+        // Don't fail the request if logging fails
+        logger.error({ error: logError, jobId: job.id }, 'Failed to write log file');
+      }
+
+      return reply.status(201).send(response);
+    } catch (error) {
+      // Log error to file if we have a job ID
+      if (job?.id) {
+        try {
+          logPath = await logVideoRequest({
+            requestId: request.id as string,
+            prompt: request.body.prompt,
+            jobId: job.id,
+            request: {
+              body: request.body,
+              headers: {
+                'user-agent': request.headers['user-agent'],
+                'content-type': request.headers['content-type'],
+              },
+              ip: request.ip,
+              method: request.method,
+              url: request.url,
+            },
+            error,
+          });
+
+          logger.info({ logPath, jobId: job.id }, 'Video request error logged to file');
+        } catch (logError) {
+          logger.error({ error: logError, jobId: job.id }, 'Failed to write error log file');
+        }
+      }
+
+      // Re-throw the error to be handled by the error handler
+      throw error;
+    }
   }
 
   /**

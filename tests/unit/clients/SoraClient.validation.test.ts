@@ -3,7 +3,7 @@
  * Tests Sora v1 API constraint enforcement at the client level
  */
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { SoraClient } from '../../../src/clients/SoraClient.js';
+import { SoraClient } from '../../../src/clients/SoraClient-do-not-use.js';
 import { SoraVideoRequest } from '../../../src/types/index.js';
 import { ExternalAPIError } from '../../../src/errors/index.js';
 

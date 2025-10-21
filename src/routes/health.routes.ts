@@ -5,12 +5,12 @@ import { FastifyInstance } from 'fastify';
 import { HealthController } from '../controllers/HealthController.js';
 import { HealthService } from '../services/HealthService.js';
 import { InMemoryJobRepository } from '../repositories/index.js';
-import { MockSoraClient } from '../clients/index.js';
+import { SoraV1Client } from '../clients/index.js';
 
 export async function healthRoutes(app: FastifyInstance) {
   // Initialize dependencies (these will be replaced with DI container later)
   const jobRepository = new InMemoryJobRepository();
-  const soraClient = new MockSoraClient();
+  const soraClient = new SoraV1Client();
   const healthService = new HealthService(jobRepository, soraClient);
   const healthController = new HealthController(healthService);
 

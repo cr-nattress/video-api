@@ -9,8 +9,10 @@ import { SoraVideoRequest, SoraJobResponse, SoraCreateResponse } from '../types/
 export interface ISoraClient {
   /**
    * Create a new video generation job
+   * @param request - Sora video request parameters
+   * @param internalJobId - Optional internal job ID for logging purposes
    */
-  createVideo(request: SoraVideoRequest): Promise<SoraCreateResponse>;
+  createVideo(request: SoraVideoRequest, internalJobId?: string): Promise<SoraCreateResponse>;
 
   /**
    * Get video generation job status

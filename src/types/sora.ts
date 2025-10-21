@@ -1,24 +1,24 @@
 /**
- * Sora v1 API type definitions
- * Model: sora-1-turbo
+ * Sora 2 API type definitions
+ * Models: sora-2, sora-2-pro
  * Base URL: https://api.openai.com/v1
  */
 
 /**
- * Sora v1 video request parameters
+ * Sora 2 video request parameters
  */
 export interface SoraVideoRequest {
-  model?: 'sora-1-turbo'; // Optional: defaults to sora-1-turbo (only valid value)
+  model?: 'sora-2' | 'sora-2-pro'; // Optional: defaults to sora-2
   prompt: string; // Required: natural language description
-  n_seconds?: number; // Optional: duration in seconds (1-20, default ~5)
-  width?: number; // Optional: video width in pixels
-  height?: number; // Optional: video height in pixels
-  n_variants?: number; // Optional: number of variants (1-4, default 1)
+  size?: string; // Optional: resolution as "WIDTHxHEIGHT" (e.g., "1280x720")
+  seconds?: '4' | '8' | '12'; // Optional: duration in seconds (default: "4")
   idempotencyKey?: string; // Optional: idempotency key for safe retries (auto-generated if not provided)
-  // Legacy fields for backward compatibility (will be mapped to n_seconds/width/height)
-  duration?: number; // Legacy: maps to n_seconds (1-20 seconds)
+  // Legacy fields for backward compatibility (will be mapped to size/seconds)
+  duration?: number; // Legacy: maps to seconds
   resolution?: '480p' | '720p' | '1080p';
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3';
+  width?: number; // Legacy: will be combined with height to create size
+  height?: number; // Legacy: will be combined with width to create size
   // Advanced fields (optional)
   style?: string;
   seed?: number;
@@ -33,7 +33,7 @@ export interface SoraBatchRequest {
 }
 
 /**
- * Sora v1 API job status
+ * Sora 2 API job status
  * Matches OpenAI's video generation job statuses
  */
 export type SoraJobStatus =
@@ -44,7 +44,7 @@ export type SoraJobStatus =
   | 'cancelled'; // Job was cancelled
 
 /**
- * Sora v1 API generation object
+ * Sora 2 API generation object
  * Represents a single generated video variant
  */
 export interface SoraGeneration {
@@ -53,7 +53,7 @@ export interface SoraGeneration {
 }
 
 /**
- * Sora v1 API job response
+ * Sora 2 API job response
  * Full job object returned by GET /v1/videos/{id}
  */
 export interface SoraJobResponse {
@@ -65,16 +65,14 @@ export interface SoraJobResponse {
   expires_at: number | null; // Unix timestamp (video expiration)
   generations: SoraGeneration[]; // Array of generated videos
   prompt: string; // Original prompt
-  model: string; // Model used ("sora-1-turbo")
-  n_variants: number; // Number of variants requested
-  n_seconds: number; // Duration in seconds
-  height: number; // Video height
-  width: number; // Video width
+  model: string; // Model used ("sora-2" or "sora-2-pro")
+  size: string; // Resolution as "WIDTHxHEIGHT" (e.g., "1280x720")
+  seconds: string; // Duration in seconds ("4", "8", or "12")
   failure_reason: string | null; // Error message (if failed)
 }
 
 /**
- * Sora v1 API create response
+ * Sora 2 API create response
  * Response from POST /v1/videos
  * Same structure as SoraJobResponse but initially empty generations
  */
@@ -118,50 +116,63 @@ export function isSoraError(response: unknown): response is SoraErrorResponse {
 }
 
 /**
- * Supported resolutions for Sora v1
+ * Supported resolutions for Sora 2
  */
-export const SORA_V1_RESOLUTIONS = {
-  '1920x1080': { width: 1920, height: 1080, aspectRatio: '16:9', label: 'Full HD Landscape' },
-  '1080x1920': { width: 1080, height: 1920, aspectRatio: '9:16', label: 'Full HD Portrait' },
-  '1280x720': { width: 1280, height: 720, aspectRatio: '16:9', label: 'HD Landscape' },
-  '720x1280': { width: 720, height: 1280, aspectRatio: '9:16', label: 'HD Portrait' },
-  '1080x1080': { width: 1080, height: 1080, aspectRatio: '1:1', label: 'Square' },
+export const SORA_2_RESOLUTIONS = {
+  // sora-2 resolutions
+  '1280x720': { width: 1280, height: 720, aspectRatio: '16:9', label: 'HD Landscape', models: ['sora-2', 'sora-2-pro'] },
+  '720x1280': { width: 720, height: 1280, aspectRatio: '9:16', label: 'HD Portrait', models: ['sora-2', 'sora-2-pro'] },
+  // sora-2-pro additional resolutions
+  '1024x1792': { width: 1024, height: 1792, aspectRatio: '9:16', label: 'Vertical Pro', models: ['sora-2-pro'] },
+  '1792x1024': { width: 1792, height: 1024, aspectRatio: '16:9', label: 'Horizontal Pro', models: ['sora-2-pro'] },
 } as const;
 
 /**
- * Map resolution string to width/height
+ * Supported duration values for Sora 2
  */
-export function mapResolutionToSize(
+export const SORA_2_DURATIONS = ['4', '8', '12'] as const;
+
+/**
+ * Map resolution string to Sora 2 size format (WIDTHxHEIGHT)
+ */
+export function mapResolutionToSoraSize(
   resolution?: '480p' | '720p' | '1080p'
-): { width: number; height: number } {
+): string {
   switch (resolution) {
-    case '1080p':
-      return { width: 1920, height: 1080 };
     case '720p':
-      return { width: 1280, height: 720 };
+      return '1280x720'; // HD landscape
+    case '1080p':
     case '480p':
-      return { width: 854, height: 480 };
     default:
-      return { width: 1080, height: 1080 }; // Default to square
+      return '1280x720'; // Default to HD landscape (sora-2 doesn't support 1080p or 480p)
   }
 }
 
 /**
- * Map aspect ratio to width/height (landscape, assuming 1080p base)
+ * Map aspect ratio to Sora 2 size format (WIDTHxHEIGHT)
  */
-export function mapAspectRatioToSize(
+export function mapAspectRatioToSoraSize(
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3'
-): { width: number; height: number } {
+): string {
   switch (aspectRatio) {
     case '16:9':
-      return { width: 1920, height: 1080 };
+      return '1280x720'; // Landscape
     case '9:16':
-      return { width: 1080, height: 1920 };
+      return '720x1280'; // Portrait
     case '1:1':
-      return { width: 1080, height: 1080 };
     case '4:3':
-      return { width: 1440, height: 1080 };
     default:
-      return { width: 1920, height: 1080 }; // Default to 16:9 landscape
+      return '1280x720'; // Default to landscape (sora-2 doesn't support square/4:3)
   }
+}
+
+/**
+ * Map duration number to Sora 2 seconds format (string "4", "8", or "12")
+ */
+export function mapDurationToSeconds(duration?: number): '4' | '8' | '12' {
+  if (!duration) return '4'; // Default
+
+  if (duration <= 4) return '4';
+  if (duration <= 8) return '8';
+  return '12';
 }

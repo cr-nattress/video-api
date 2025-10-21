@@ -215,9 +215,9 @@ export class VideoService implements IVideoService {
         throw new NotFoundError('Video job', jobId);
       }
 
-      // Submit to Sora API
+      // Prepare Sora API request
       const soraRequest = {
-        model: 'sora-1-turbo' as const,
+        model: request.model || ('sora-2' as const),
         prompt: request.prompt,
         duration: request.duration,
         resolution: request.resolution,
@@ -225,7 +225,8 @@ export class VideoService implements IVideoService {
         style: request.style,
       };
 
-      const soraResponse = await this.soraClient.createVideo(soraRequest);
+      // Submit to Sora API (logging happens inside the client)
+      const soraResponse = await this.soraClient.createVideo(soraRequest, jobId);
 
       // Update job with Sora job ID and status
       let updatedJob = updateJobSoraId(job, soraResponse.id);
@@ -239,6 +240,7 @@ export class VideoService implements IVideoService {
       );
     } catch (error) {
       logger.error({ jobId, error }, 'Failed to submit job to Sora API');
+      // Error logging to file happens in SoraClient
 
       // Update job status to failed
       const job = await this.jobRepository.findById(jobId);

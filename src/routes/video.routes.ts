@@ -5,13 +5,13 @@ import { FastifyInstance } from 'fastify';
 import { VideoController } from '../controllers/index.js';
 import { VideoService, BatchService } from '../services/index.js';
 import { InMemoryJobRepository } from '../repositories/index.js';
-import { SoraClient } from '../clients/index.js';
+import { SoraV1Client } from '../clients/index.js';
 import { authenticate } from '../middleware/index.js';
 
 export async function videoRoutes(app: FastifyInstance) {
   // Initialize dependencies (will be replaced with DI container later)
   const jobRepository = new InMemoryJobRepository();
-  const soraClient = new SoraClient();
+  const soraClient = new SoraV1Client();
   const videoService = new VideoService(jobRepository, soraClient);
   const batchService = new BatchService(videoService, jobRepository);
   const videoController = new VideoController(videoService, batchService);
